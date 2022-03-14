@@ -15,7 +15,7 @@ import com.google.android.material.snackbar.Snackbar
 import com.pmj.where.databinding.ActivityMainBinding
 
 private const val TAG = "MainActivity"
-private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
+private const val PERMISSIONS_REQUEST_CODE = 26
 
 /**
  *  This app allows a user to receive location updates without the background permission even when
@@ -59,6 +59,7 @@ private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
  * notification. This dismisses the notification and stops the service.
  */
 class MainActivity : AppCompatActivity() {
+
     private var foregroundOnlyLocationServiceBound = false
 
     // Provides location updates for while-in-use feature.
@@ -69,7 +70,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    // Monitors connection to the while-in-use service.
+    // Monitors connection to the location service.
     private val foregroundOnlyServiceConnection = object : ServiceConnection {
 
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
@@ -155,16 +156,15 @@ class MainActivity : AppCompatActivity() {
                     ActivityCompat.requestPermissions(
                         this@MainActivity,
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                        REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE
+                        PERMISSIONS_REQUEST_CODE
                     )
                 }
                 .show()
         } else {
-            Log.d(TAG, "Request foreground only permission")
             ActivityCompat.requestPermissions(
                 this@MainActivity,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE
+                PERMISSIONS_REQUEST_CODE
             )
         }
     }
@@ -175,10 +175,9 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        Log.d(TAG, "onRequestPermissionResult")
 
         when (requestCode) {
-            REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE -> when {
+            PERMISSIONS_REQUEST_CODE -> when {
                 grantResults.isEmpty() ->
                     // If user interaction was interrupted, the permission request
                     // is cancelled and you receive empty arrays.
@@ -211,10 +210,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun logResultsToScreen(output: String) {
-        binding.outputTextView.text = output
-    }
-
     /**
      * Receiver for location broadcasts from [LocationService].
      */
@@ -223,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             val location = intent.getStringExtra(LocationService.EXTRA_LOCATION)
             if (location != null) {
-                logResultsToScreen("Foreground location: $location")
+                binding.outputTextView.text = location
             }
         }
     }

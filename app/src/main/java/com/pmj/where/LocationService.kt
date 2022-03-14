@@ -49,21 +49,13 @@ class LocationService : Service() {
     private var tts: TextToSpeech? = null
 
     override fun onCreate() {
-        Log.d(TAG, "onCreate()")
-
-        tts = TextToSpeech(this) { status ->
+        tts = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                // set US English as language for tts
-                val result = tts!!.setLanguage(Locale("ml", "IN"))
-
+                // set language for tts
+                val result = tts?.setLanguage(Locale(TTS_LANGUAGE, TTS_REGION))
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                     Log.e("TTS", "The Language specified is not supported!")
-                } else {
-                    Log.e("TTS", "Initilization Fail")
                 }
-
-            } else {
-                Log.e("TTS", "Initilization Failed!")
             }
         }
 
@@ -81,15 +73,15 @@ class LocationService : Service() {
             // IMPORTANT NOTE: Apps running on Android 8.0 and higher devices (regardless of
             // targetSdkVersion) may receive updates less frequently than this interval when the app
             // is no longer in the foreground.
-            interval = TimeUnit.SECONDS.toMillis(60)
+            interval = TimeUnit.MINUTES.toMillis(10)
 
             // Sets the fastest rate for active location updates. This interval is exact, and your
             // application will never receive updates more frequently than this value.
-            fastestInterval = TimeUnit.SECONDS.toMillis(30)
+            fastestInterval = TimeUnit.MINUTES.toMillis(10)
 
             // Sets the maximum time when batched location updates are delivered. Updates may be
             // delivered sooner than this interval.
-            maxWaitTime = TimeUnit.MINUTES.toMillis(2)
+            maxWaitTime = TimeUnit.MINUTES.toMillis(15)
 
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         }
@@ -98,29 +90,19 @@ class LocationService : Service() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
 
-                // Normally, you want to save a new location to a database. We are simplifying
-                // things a bit and just saving it as a local variable, as we only need it again
-                // if a Notification is created (when the user navigates away from app).
-                val locationStr = getCompleteAddressString(locationResult.lastLocation)
+                val locationStr = getAddressString(locationResult.lastLocation)
                 if (!locationStr.isNullOrBlank()) {
                     Log.i(TAG, locationStr)
                     currentLocation = locationStr
-                    tts?.speak(locationStr, TextToSpeech.QUEUE_FLUSH, null, "")
-                    android.os.Handler(Looper.getMainLooper()).postDelayed({
-                        tts?.speak(locationStr, TextToSpeech.QUEUE_FLUSH, null, "")
-                    }, 2000)
-
-                    android.os.Handler(Looper.getMainLooper()).postDelayed({
-                        tts?.speak(locationStr, TextToSpeech.QUEUE_FLUSH, null, "")
-                    }, 3000)
-
+                    speak(text = locationStr)
+                    speakAfterDelay(text = locationStr)
+                    speakAfterDelay(text = locationStr)
                     // Notify our Activity that a new location was added.
                     val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
                     intent.putExtra(EXTRA_LOCATION, locationStr)
                     LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
                 }
-                // Updates notification content if this service is running as a foreground
-                // service.
+                // Updates notification content if this service is running as a foreground service.
                 if (serviceRunningInForeground) {
                     notificationManager.notify(
                         NOTIFICATION_ID,
@@ -131,9 +113,17 @@ class LocationService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand()")
+    private fun speak(text: String) {
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
+    }
 
+    private fun speakAfterDelay(text: String) {
+        android.os.Handler(Looper.getMainLooper()).postDelayed({
+            speak(text)
+        }, TTS_DELAY)
+    }
+
+    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         val cancelLocationTrackingFromNotification =
             intent.getBooleanExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, false)
 
@@ -146,8 +136,6 @@ class LocationService : Service() {
     }
 
     override fun onBind(intent: Intent): IBinder {
-        Log.d(TAG, "onBind()")
-
         // MainActivity (client) comes into foreground and binds to service, so the service can
         // become a background services.
         stopForeground(true)
@@ -157,8 +145,6 @@ class LocationService : Service() {
     }
 
     override fun onRebind(intent: Intent) {
-        Log.d(TAG, "onRebind()")
-
         // MainActivity (client) returns to the foreground and rebinds to service, so the service
         // can become a background services.
         stopForeground(true)
@@ -168,10 +154,7 @@ class LocationService : Service() {
     }
 
     override fun onUnbind(intent: Intent): Boolean {
-        Log.d(TAG, "onUnbind()")
-
-        // MainActivity (client) leaves foreground, so service needs to become a foreground service
-        // to maintain the 'while-in-use' label.
+        // MainActivity (client) leaves foreground, so service needs to become a foreground service.
         // NOTE: If this method is called due to a configuration change in MainActivity,
         // we do nothing.
         if (!configurationChange) {
@@ -185,18 +168,12 @@ class LocationService : Service() {
         return true
     }
 
-    override fun onDestroy() {
-        Log.d(TAG, "onDestroy()")
-    }
-
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         configurationChange = true
     }
 
     fun subscribeToLocationUpdates() {
-        Log.d(TAG, "subscribeToLocationUpdates()")
-
         // Binding to this service doesn't actually trigger onStartCommand(). That is needed to
         // ensure this Service can be promoted to a foreground service, i.e., the service needs to
         // be officially started (which we do here).
@@ -212,8 +189,6 @@ class LocationService : Service() {
     }
 
     private fun unsubscribeToLocationUpdates() {
-        Log.d(TAG, "unsubscribeToLocationUpdates()")
-
         try {
             val removeTask = fusedLocationProviderClient.removeLocationUpdates(locationCallback)
             removeTask.addOnCompleteListener { task ->
@@ -233,14 +208,9 @@ class LocationService : Service() {
      * Generates a BIG_TEXT_STYLE Notification that represent latest location.
      */
     private fun generateNotification(location: String?): Notification {
-        Log.d(TAG, "generateNotification()")
-
-        // 0. Get data
         val mainNotificationText = location ?: getString(R.string.no_location_text)
         val titleText = getString(R.string.app_name)
         Log.d(TAG, mainNotificationText)
-        // 1. Create Notification Channel for O+ and beyond devices (26+).
-
         val notificationChannel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID, titleText, NotificationManager.IMPORTANCE_DEFAULT
         )
@@ -250,27 +220,23 @@ class LocationService : Service() {
         // no operation, so it's safe to perform the below sequence.
         notificationManager.createNotificationChannel(notificationChannel)
 
-        // 2. Build the BIG_TEXT_STYLE.
         val bigTextStyle = NotificationCompat.BigTextStyle()
             .bigText(mainNotificationText)
             .setBigContentTitle(titleText)
 
-        // 3. Set up main Intent/Pending Intents for notification.
         val launchActivityIntent = Intent(this, MainActivity::class.java)
 
         val cancelIntent = Intent(this, LocationService::class.java)
         cancelIntent.putExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, true)
 
         val servicePendingIntent = PendingIntent.getService(
-            this, 0, cancelIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 0, cancelIntent, PendingIntent.FLAG_MUTABLE
         )
 
         val activityPendingIntent = PendingIntent.getActivity(
             this, 0, launchActivityIntent, PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 4. Build and issue the notification.
-        // Notification Channel Id is ignored for Android pre O (26).
         val notificationCompatBuilder =
             NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
 
@@ -283,7 +249,7 @@ class LocationService : Service() {
             .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
-                R.drawable.ic_launch, "Launch activity",
+                R.drawable.ic_launch, getString(R.string.open),
                 activityPendingIntent
             )
             .addAction(
@@ -294,17 +260,19 @@ class LocationService : Service() {
             .build()
     }
 
-    private fun getCompleteAddressString(location: Location): String? {
-        val geocoder = Geocoder(this, Locale.getDefault())
-        val addresses: List<Address>? =
-            geocoder.getFromLocation(location.latitude, location.longitude, 1)
-        val returnedAddress: Address? = addresses?.getOrNull(0)
-        return returnedAddress?.locality
+    /**
+     * This method returns the address as a string from the latitude/longitude.
+     * */
+    private fun getAddressString(location: Location): String? {
+        Geocoder(this, Locale.getDefault()).apply {
+            val addresses: List<Address>? =
+                getFromLocation(location.latitude, location.longitude, 1)
+            return addresses?.getOrNull(0)?.locality
+        }
     }
 
-
     /**
-     * Class used for the client Binder.  Since this service runs in the same process as its
+     * Class used for the client Binder. Since this service runs in the same process as its
      * clients, we don't need to deal with IPC.
      */
     inner class LocalBinder : Binder() {
@@ -315,7 +283,7 @@ class LocationService : Service() {
     companion object {
         private const val TAG = "LocationService"
 
-        private const val PACKAGE_NAME = "com.example.android.whileinuselocation"
+        private const val PACKAGE_NAME = "com.pmj.where"
 
         internal const val ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST =
             "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST"
@@ -327,6 +295,11 @@ class LocationService : Service() {
 
         private const val NOTIFICATION_ID = 12345678
 
-        private const val NOTIFICATION_CHANNEL_ID = "while_in_use_channel_01"
+        private val TTS_DELAY = TimeUnit.SECONDS.toMillis(4)
+
+        private const val NOTIFICATION_CHANNEL_ID = "where_app_channel_01"
+
+        private const val TTS_LANGUAGE = "ml"
+        private const val TTS_REGION = "IN"
     }
 }

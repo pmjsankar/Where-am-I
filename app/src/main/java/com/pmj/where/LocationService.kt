@@ -8,6 +8,7 @@ import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -230,7 +231,12 @@ class LocationService : Service() {
         cancelIntent.putExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, true)
 
         val servicePendingIntent = PendingIntent.getService(
-            this, 0, cancelIntent, PendingIntent.FLAG_MUTABLE
+            this, 0, cancelIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
         )
 
         val activityPendingIntent = PendingIntent.getActivity(
